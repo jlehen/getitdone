@@ -1,163 +1,552 @@
 #!/usr/bin/env python
+#
+# Copyright (c) 2013, Jeremie Le Hen <jeremie@le-hen.org>
+# All rights reserved.
+# 
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met: 
+# 
+# 1. Redistributions of source code must retain the above copyright notice, this
+#    list of conditions and the following disclaimer. 
+# 2. Redistributions in binary form must reproduce the above copyright notice,
+#    this list of conditions and the following disclaimer in the documentation
+#    and/or other materials provided with the distribution. 
+# 
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+# ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+# WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR
+# ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+# (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+# LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+# ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+# SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+
+import time
 import sqlite3
+import sys
 
-class TodoItem:
+# TODO: transaction for tags
 
-    def __init__(self, creation=None, lastupdate=None, updates=None):
-        self._creation = creation
-        self._lastupdate = lastupdate
-        self._updates = updates
-        self._title = None
-        self._deadline = None
-        self._completion = None
-        self._tags = []
+KNOWN_DATE_FORMATS = (
+    '%y/%m/%d', '%Y/%m/%d', '%d/%m/%Y',
+    '%y-%m-%d', '%Y-%m-%d', '%d-%m-%Y',
+    '%y%m%d', '%Y%m%d'
+)
+
+def printTodoItem(todoitem):
+    rowid = " - "
+    if todoitem.rowid.get() is not None:
+        rowid = "%3d" % todoitem.rowid.get()
+    completion = ""
+    if todoitem.completion.get() is not None:
+        completion = "%3d%%" % todoitem.completion.get()
+    priority = ""
+    if todoitem.priority.get() is not None:
+        priority = "%2d!" % todoitem.priority
+    deadline = ""
+    if todoitem.deadline.get() is not None:
+        deadline = time.strftime('@%y/%m/%d',
+          time.localtime(todoitem.deadline.get()))
+    print "[%3s] %3s %-4s %-9s %s %s" % \
+      (rowid, priority, completion, deadline,
+        ','.join(todoitem.tags.get()), todoitem.title.get())
+
+class TodoItem(object):
+
+    class ROProperty(object):
+
+        def __init__(self, value=None):
+            self._value = value
+
+        def get(self):
+            return self._value
+
+    class RWProperty(ROProperty):
+
+        def __init__(self, value=None):
+            super(TodoItem.RWProperty, self).__init__(value)
+            self.modified = False
+
+        def set(self, value):
+            self._value = value
+            self.modified = True
+
+        def isModified(self):
+            return self.modified
+
+
+    class RWDProperty(RWProperty):
+
+        def unset(self):
+            self._value = None
+            self.modified = True
+
+
+    class RWSet(object):
+
+        def __init__(self, values=[]):
+            self._oset = set(values)
+            self._set = set(values)
+            self._modified = False
+
+        def __iter__(self):
+            return iter(self._set)
+
+        def len(self):
+            return len(self._set)
+
+        def get(self):
+            return self._set.copy()
+
+        def set(self, values):
+            self._set = set(values)
+            self._modified = True
+
+        def add(self, values):
+            if isinstance(values, set) or isinstance(values, frozenset) or \
+              isinstance(values, tuple) or isinstance(values, list):
+                self._set.update(values)
+            else:
+                self._set.add(values)
+            self._modified = True
+
+        def delete(self, values):
+            if isinstance(values, set) or isinstance(values, frozenset) or \
+              isinstance(values, tuple) or isinstance(values, list):
+                self._set.difference_update(values)
+            else:
+                self._set.discard(values)
+            self._modified = True
+
+        def isModified(self):
+            return self._modified
+
+        def difference(self):
+            if not self._modified:
+                return ((), ())
+            plus = self._set - self._oset
+            minus = self._oset - self._set
+            return (plus, minus)
+
+
+    def __init__(self, rowid=None, creation=None, lastupdate=None, updates=None):
+        self.rowid = TodoItem.ROProperty(rowid)
+        self.creation = TodoItem.ROProperty(creation)
+        self.lastupdate = TodoItem.ROProperty(lastupdate)
+        self.updates = TodoItem.ROProperty(updates)
+
+        self.title = TodoItem.RWProperty()
+        self.deadline = TodoItem.RWDProperty()
+        self.completion = TodoItem.RWDProperty()
+        self.priority = TodoItem.RWDProperty()
+
+        self.tags = TodoItem.RWSet()
 
     @classmethod
     def fromRow(cls, row):
-        item = cls(row['creation'], row['lastupdate'], row['updates'])
-        item.setTitle(row['title'])
-        item.setDeadline(row['deadline'])
-        item.setCompletion(row['completion'])
+        item = cls(row['rowid'], row['creation'], row['lastupdate'],
+          row['updates'])
+        item.title = TodoItem.RWProperty(row['title'])
+        item.deadline = TodoItem.RWDProperty(row['deadline'])
+        item.completion = TodoItem.RWDProperty(row['completion'])
+        item.priority = TodoItem.RWDProperty(row['priority'])
+        tags = row['tags'] if row['tags'] is not None else ''
+        item.tags = TodoItem.RWSet(tags.split(','))
         return item
 
-    def setDeadline(self, deadline):
-        self._deadline = deadline
-        return self
-
-    def setTitle(self, title):
-        self._title = title
-        return self
-
-    def setCompletion(self, completion):
-        self._completion = completion
-        return self
-
-    def setTags(self, tags):
-        self._tags = []
-        for t in tags:
-            self._tags.append(t)
-        return self
-
     @property
-    def creation(self):
-        return self._creation
+    def modified(self):
+        return self.title.isModified() or self.deadline.isModified() or \
+          self.completion.isModified() or self.priority.isModified() or \
+          self.tags.isModified()
 
-    @property
-    def lastupdate(self):
-        return self._lastupdate
-
-    @property
-    def deadline(self):
-        return self._deadline
-
-    @property
-    def updates(self):
-        return self._updates
-
-    @property
-    def title(self):
-        return self._title
-
-    @property
-    def completion(self):
-        return self._completion
-
-    @property
-    def tags(self):
-        return self._tags[::]
+    def update(self, modification):
+        if modification.title.isModified():
+            self.title.set(modification.title.get())
+        if modification.deadline.isModified():
+            self.deadline.set(modification.deadline.get())
+        if modification.completion.isModified():
+            self.completion.set(modification.completion.get())
+        if modification.priority.isModified():
+            self.priorityget.set(modification.priority.get())
+        if modification.tags.isModified():
+            self.tags.set(modifications.tags.get())
 
 
 class TodoDatabase:
 
+    @staticmethod
+    def dict_factory(cursor, row):
+        d = {}
+        for idx, col in enumerate(cursor.description):
+            d[col[0]] = row[idx]
+        return d
+
     def __init__(self, dbfile):
         self._conn = sqlite3.connect(dbfile)
+        self._conn.row_factory = TodoDatabase.dict_factory
+        self._conn.isolation_level = None
         self._conn.executescript("""
-CREATE TABLE IF NOT EXISTS todo (
-    creation INTEGER DEFAULT CURRENT_TIMESTAMP,
-    lastupdate INTEGER DEFAULT CURRENT_TIMESTAMP,
-    updates INTEGER DEFAULT 0,
-    deadline INTEGER,
-    title TEXT NOT NULL ON CONFLICT ABORT,
-    completion INTEGER DEFAULT 0
-        CHECK (completion >= 0 AND completion <= 100)
-);
+        CREATE TABLE IF NOT EXISTS todo (
+            creation INTEGER DEFAULT CURRENT_TIMESTAMP,
+            lastupdate INTEGER DEFAULT CURRENT_TIMESTAMP,
+            updates INTEGER DEFAULT 0,
+            deadline INTEGER,
+            title TEXT NOT NULL ON CONFLICT ABORT,
+            description TEXT,
+            completion INTEGER DEFAULT 0
+                CHECK (completion >= 0 AND completion <= 100),
+            priority INTEGER DEFAULT 0
+        );
 
-CREATE INDEX IF NOT EXISTS index_deadline ON todo (deadline);
+        CREATE INDEX IF NOT EXISTS index_deadline ON todo (deadline);
 
-CREATE INDEX IF NOT EXISTS index_completion ON todo (completion);
-
-
-CREATE TABLE IF NOT EXISTS tags (
-    todokey INTEGER REFERENCES todo (rowid) ON DELETE CASCADE,
-    tag TEXT
-);
-
-CREATE INDEX IF NOT EXISTS index_tag_todokey ON tags (tag, todokey);
-
-CREATE INDEX IF NOT EXISTS index_todokey ON tags (todokey);
+        CREATE INDEX IF NOT EXISTS index_completion ON todo (completion);
 
 
-CREATE TRIGGER IF NOT EXISTS trigger_update_todo UPDATE ON todo
-BEGIN
-    UPDATE todo SET updates = OLD.updates + 1 WHERE rowid = OLD.rowid;
-    UPDATE todo SET lastupdate = CURRENT_TIMESTAMP WHERE rowid = OLD.rowid;
-END;
+        CREATE TABLE IF NOT EXISTS tags (
+            todokey INTEGER REFERENCES todo (rowid) ON DELETE CASCADE,
+            tag TEXT
+        );
 
-CREATE TRIGGER IF NOT EXISTS trigger_update_tags UPDATE ON tags
-BEGIN
-    UPDATE todo SET updates = updates + 1 WHERE rowid == OLD.todokey;
-    UPDATE todo SET lastupdate = CURRENT_TIMESTAMP WHERE rowid = OLD.rowid;
-END;
+        CREATE INDEX IF NOT EXISTS index_tag_todokey ON tags (tag, todokey);
 
-CREATE TRIGGER IF NOT EXISTS trigger_insert_tags INSERT ON tags
-BEGIN
-    UPDATE todo SET updates = updates + 1 WHERE rowid == NEW.todokey;
-    UPDATE todo SET lastupdate = CURRENT_TIMESTAMP WHERE rowid = NEW.rowid;
-END;
+        CREATE INDEX IF NOT EXISTS index_todokey ON tags (todokey);
 
-CREATE TRIGGER IF NOT EXISTS trigger_delete_tags DELETE ON tags
-BEGIN
-    UPDATE todo SET updates = updates + 1 WHERE rowid == OLD.todokey;
-    UPDATE todo SET lastupdate = CURRENT_TIMESTAMP WHERE rowid = OLD.rowid;
-END;
+
+        CREATE TRIGGER IF NOT EXISTS trigger_update_todo UPDATE ON todo
+        BEGIN
+            UPDATE todo SET updates = OLD.updates + 1 WHERE rowid = OLD.rowid;
+
+            UPDATE todo
+            SET lastupdate = CURRENT_TIMESTAMP
+            WHERE rowid = OLD.rowid;
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS trigger_update_tags UPDATE ON tags
+        BEGIN
+            UPDATE todo SET updates = updates + 1 WHERE rowid == OLD.todokey;
+
+            UPDATE todo
+            SET lastupdate = CURRENT_TIMESTAMP
+            WHERE rowid = OLD.rowid;
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS trigger_insert_tags INSERT ON tags
+        BEGIN
+            UPDATE todo SET updates = updates + 1 WHERE rowid == NEW.todokey;
+
+            UPDATE todo
+            SET lastupdate = CURRENT_TIMESTAMP
+            WHERE rowid = NEW.rowid;
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS trigger_delete_tags DELETE ON tags
+        BEGIN
+            UPDATE todo SET updates = updates + 1 WHERE rowid == OLD.todokey;
+
+            UPDATE todo
+            SET lastupdate = CURRENT_TIMESTAMP
+            WHERE rowid = OLD.rowid;
+        END;
         """)
+
 
     def add(self, item):
         c = self._conn.cursor()
-        #c.execute("BEGIN")
         c.execute("""
-INSERT INTO todo (deadline, title, completion) VALUES (?, ?, ?)
-        """, (item.deadline, item.title, item.completion))
-        print str(item)
+        INSERT INTO todo (deadline, title, completion, priority)
+        VALUES (?, ?, ?, ?);
+        """, (item.deadline.get(), item.title.get(),
+           item.completion.get(), item.priority.get()))
         rowid = c.lastrowid
         for tag in item.tags:
                 c.execute("""
-INSERT INTO tags (todokey, tag) VALUES (?, ?)
+                INSERT INTO tags (todokey, tag) VALUES (?, ?);
                 """, (rowid, tag))
-        #c.execute("COMMIT")
         return rowid
 
-    def get(self, idlist=[]):
+    def update(self, item):
         c = self._conn.cursor()
-        query = "SELECT * FROM todo"
-        for rowid in idlist:
-            query += " WHERE creation IN ({seq})".format(
-              seq=','.join(['?'] * len(args)))
-        cursor.execute(query, idlist)
-        rows = cursor.fetchall()
-        result = []
-        for row in rows:
-            item = TodoItem.fromRow(row)
-            c.execute("SELECT tag FROM tags WHERE todokey = ?", row['rowid'])
-            tags = [t[0] for t in c.fetchall()]
-            item.setTags(tags)
-            result.append(item)
-        return result
+
+        columns = []
+        if item.title.isModified():
+            columns.append(("title", item.title.get()))
+        if item.completion.isModified():
+            columns.append(("completion", item.completion.get()))
+        if item.deadline.isModified():
+            columns.append(("deadline", item.deadline))
+        if item.completion.isModified():
+            columns.append(("priority", item.priority.get()))
+        if len(columns) > 0:
+            query = "UPDATE todo SET "
+            query += ", ".join(map(lambda t: "%s = ?" % t[0], columns))
+            query += " WHERE rowid = ?"
+            params = map(lambda t: t[1], columns)
+            params.append(item.rowid.get())
+            c.execute(query, params)
+
+        tags, untags = item.tags.difference()
+        for tag in tags:
+            c.execute("""
+            INSERT INTO tags (todokey, tag) VALUES (?, ?);
+            """, item.rowid.get(), tag)
+        if len(untags) > 0:
+            subquery = " OR ".join("tags = ?" * len(untags))
+            params = [rowid] + map(lambda x: x, untags)
+            c.execute("""
+            DELETE FROM tags WHERE rowid = ? AND (%s)
+            """ % subquery, params)
+
+    def delete(self, ids):
+        query = "DELETE FROM todo WHERE rowid IN ({idslist})".format(
+          idslist=', '.join(['?'] * len(ids)))
+        c = self._conn.cursor()
+        c.execute(query, ids)
+ 
+    def get_raw(self, querycond):
+        query = """
+        SELECT *
+        FROM (
+            SELECT
+                todo.rowid,
+                creation,
+                lastupdate,
+                updates,
+                deadline,
+                title,
+                completion,
+                priority,
+                group_concat(tag, ",") AS tags
+            FROM
+                todo LEFT OUTER JOIN tags ON todo.rowid = tags.todokey
+            GROUP BY todo.rowid
+            )
+        """
+        query += querycond
+        c = self._conn.cursor()
+        c.execute(query)
+        itemlist = []
+        while True:
+            row = c.fetchone()
+            if row is None:
+                break
+            itemlist.append(TodoItem.fromRow(row))
+        return itemlist
 
 
-todo = TodoDatabase('todo.sqlite')
-item1 = TodoItem().setTitle("upgrade push2mob").setCompletion(20).setTags(['#python', '#sqlite'])
-item2 = TodoItem().setTitle("finish up this program").setCompletion(20).setTags(['#python', '#sqlite'])
-todo.add(item1)
-todo.add(item2)
+    def get(self, item):
+        query = """
+        SELECT *
+        FROM (
+            SELECT
+                todo.rowid,
+                creation,
+                lastupdate,
+                updates,
+                deadline,
+                title,
+                completion,
+                priority,
+                group_concat(tag, ",") AS tags
+            FROM
+                todo LEFT OUTER JOIN tags ON todo.rowid = tags.todokey
+            GROUP BY todo.rowid
+            )
+        """
+        columns = []
+        if item.title.isModified():
+            columns.append(("title", item.title.get()))
+        if item.completion.isModified():
+            columns.append(("completion", item.completion.get()))
+        if item.deadline.isModified():
+            columns.append(("deadline", item.deadline.get()))
+        if item.completion.isModified():
+            columns.append(("priority", item.priority.get()))
+
+        querycond = map(lambda t: "%s GLOB ?" % t[0], columns)
+        params = map(lambda t: t[1], columns)
+
+        if item.tags.isModified():
+            querycond.append("""
+                rowid IN (
+                    SELECT DISTINCT todokey
+                    FROM tags
+                    WHERE tag IN ({taglist})
+                )
+            """.format(taglist=', '.join(['?'] * item.tags.len())))
+            params += map(lambda x: x, item.tags)
+
+        if len(querycond) > 0:
+            query += "WHERE " + " AND ".join(querycond)
+
+        c = self._conn.cursor()
+        c.execute(query, params)
+        itemlist = []
+        while True:
+            row = c.fetchone()
+            if row is None:
+                break
+            itemlist.append(TodoItem.fromRow(row))
+        return itemlist
+
+
+if __name__ == "__main__":
+    todo = TodoDatabase('todo.sqlite')
+
+    cmd = sys.argv[1]
+    argv = sys.argv[2:]
+    if len(argv) > 0:
+        argv = filter(lambda a: len(a) > 0,
+          reduce(lambda x, y: x + y, [arg.split() for arg in argv]))
+
+    item = TodoItem()
+    title = []
+    tags = set()
+    untags = set()
+    for arg in argv:
+        if arg[0] == '#':                               # Add tag
+            tags.add(arg)
+        elif arg[0:1] == "-#":                          # Remove tag
+            untags.add(arg[1:])
+        elif arg[0] == '%':                             # Set completion
+            item.completion.set(int(arg[1:]))
+        elif arg[0:1] == '-%':                          # Unset completion
+            item.completion.unset()
+        elif arg[0] == '!':                             # Set priority
+            item.priority.set(int(arg[1:]))
+        elif arg[0:1] == '-!':                          # Unset priority
+            item.priority.unset()
+        elif arg[0] == '@':                             # Set deadline
+            ok = False
+            for fmt in KNOWN_DATE_FORMATS:
+                try:
+                    date = time.strptime(arg[1:], fmt)
+                    item.deadline.set(time.mktime(date))
+                    ok = True
+                    break
+                except ValueError:
+                    pass
+                if not ok:
+                    raise ValueError("Unknown date format: %s" % date)
+        elif arg[0:1] == '-@':                          # Set deadline
+            item.deadline.unset()
+        else:
+            title.append(arg)
+
+    if cmd == 'add' or cmd == 'insert':
+        item.tags.set(tags)
+        item.title.set(' '.join(title))
+        todo.add(item)
+
+    if cmd == 'update':
+        tagsintersect = tags & untags
+        if len(tagsintersect) != 0:
+            raise ValueError("Tags & untags intersect: %s" % \
+              ', '.join(tagsintersect))
+
+        rowid = title[0]
+        title = title[1:]
+
+        itemlist = todo.get_raw("WHERE rowid = %d" % int(rowid,))
+        if len(itemlist) == 0:
+            raise ValueError("No such item: %s" % rowid)
+        curitem = itemlist[0]
+
+        if len(title) > 0:
+            item.title.set(' '.join(title))
+        curitem.update(item)
+        if len(tags) > 0:
+            curitem.tags.add(tags)
+        if len(untags) > 0:
+            curitem.tags.delete(untags)
+ 
+        todo.update(curitem)
+        
+    if cmd == 'get' or cmd == 'print':
+        if len(title) > 0:
+            item.title.set(' '.join(title))
+        if len(tags) > 0:
+            item.tags.set(tags)
+
+        for ritem in todo.get(item):
+            printTodoItem(ritem)
+
+    if cmd == 'del' or cmd == 'delete' or \
+      cmd == 'rem' or cmd == 'remove':
+        ids = []
+        for rowid in title:
+            ids.append(int(rowid))
+        todo.delete(ids)
+
+
+
+
+### DEAD CODE ###
+
+#    def get(self, **args):
+#        """args contains ids, order, tags, title"""
+#        query = """
+#        SELECT
+#            todo.rowid,
+#            creation,
+#            lastupdate,
+#            updates,
+#            deadline,
+#            title,
+#            completion,
+#            priority,
+#            group_concat(tag, ",") AS tags
+#        FROM
+#            todo LEFT OUTER JOIN tags ON todo.rowid = tags.todokey
+#        """
+#        querycond = []
+#        if 'tags' in args:
+#            querycond.append("""
+#                todo.rowid IN (
+#                    SELECT DISTINCT todokey
+#                    FROM tags
+#                    WHERE tag IN ({taglist})
+#                )
+#            """.format(taglist=', '.join(['?'] * len(args['tags']))))
+#        else:
+#            args['tags'] = []
+#
+#        if 'ids' in args:
+#            querycond.append("todo.rowid IN ({idlist})".format(
+#              idlist=', '.join(['?'] * len(args['ids']))))
+#        else:
+#            args['ids'] = []
+#
+#        if 'title' in args:
+#            querycond.append("(" + \
+#              ' OR '.join(['title LIKE "?"'] * len(title)) + ")")
+#        else:
+#            args['title'] = []
+#
+#        if len(querycond) > 0:
+#            query += "WHERE " + " AND ".join(querycond)
+#
+#        # Fold tags together for the same entry.
+#        query += """
+#        GROUP BY todo.rowid
+#        """
+#
+#        if 'order' in args:
+#            query += "ORDER BY {orderlist}".format(
+#              orderlist=', '.join(args['order']))
+#        query += ';'
+#
+#        c = self._conn.cursor()
+#        c.execute(query, *(args['tags'] + args['ids'] + args['title']))
+#        itemlist = []
+#        while True:
+#            row = c.fetchone()
+#            if row is None:
+#                break
+#            print row
+#            itemlist.append(TodoItem.fromRow(row))
+#        return itemlist
