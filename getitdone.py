@@ -217,6 +217,12 @@ class TodoDatabase:
         CREATE INDEX IF NOT EXISTS index_todokey ON tags (todokey);
 
 
+        CREATE TABLE IF NOT EXISTS templates (
+            name TEXT NOT NULL PRIMARY KEY,
+            query TEXT NOT NULL
+        );
+
+
         CREATE TRIGGER IF NOT EXISTS trigger_update_todo UPDATE ON todo
         BEGIN
             UPDATE todo SET updates = OLD.updates + 1 WHERE rowid = OLD.rowid;
@@ -307,7 +313,7 @@ class TodoDatabase:
         c = self._conn.cursor()
         c.execute(query, ids)
  
-    def get_raw(self, querycond, params):
+    def get_raw(self, querycond, params=[]):
         query = """
         SELECT *
         FROM (
@@ -327,6 +333,7 @@ class TodoDatabase:
             )
         """
         query += querycond
+        query += ";"
         c = self._conn.cursor()
         c.execute(query, params)
         itemlist = []
@@ -380,18 +387,49 @@ class TodoDatabase:
             """.format(taglist=', '.join(['?'] * item.tags.len())))
             params += map(lambda x: x, item.tags)
 
+        where = ""
         if len(querycond) > 0:
-            query += "WHERE " + " AND ".join(querycond)
+            where = "WHERE " + " AND ".join(querycond)
 
+        return self.get_raw(where, params)
+
+
+    def templateadd(self, name, query):
+        self._conn.cursor().execute("""
+        INSERT INTO templates (name, query) VALUES (?, ?);
+        """, (name, query))
+
+
+    def templatedel(self, name):
+        self._conn.cursor().execute("""
+        DELETE FROM templates WHERE name = ?;
+        """, (name,))
+
+
+    def templateshow(self, names=[]):
         c = self._conn.cursor()
-        c.execute(query, params)
-        itemlist = []
+        query = "SELECT * FROM templates";
+        if len(names) > 0:
+            query += " WHERE name IN (" + ", ".join(["?"] * len(names)) + ")"
+        query += ';'
+        c.execute(query, names)
         while True:
             row = c.fetchone()
             if row is None:
                 break
-            itemlist.append(TodoItem.fromRow(row))
-        return itemlist
+            print "[%12s] %s" % (row['name'], row['query']);
+
+
+    def templaterun(self, name, params):
+        c = self._conn.cursor()
+        c.execute("""
+        SELECT query FROM templates WHERE name = ?;
+        """, (name,))
+        row = c.fetchone()
+        if row is None:
+            raise ValueError("Unknown template: %s" % name)
+        query = row['query']
+        return todo.get_raw(query, params)
 
 
 if __name__ == "__main__":
@@ -402,6 +440,34 @@ if __name__ == "__main__":
     if len(argv) > 0:
         argv = filter(lambda a: len(a) > 0,
           reduce(lambda x, y: x + y, [arg.split() for arg in argv]))
+
+    if cmd == "template" or cmd == "tmpl":
+        cmd = argv[0]
+        argv = argv[1:]
+
+        if cmd == "add":
+            name = argv[0]
+            req = ' '.join(argv[1:])
+            todo.templateadd(name, req)
+
+        if cmd == "del":
+            name = argv[0]
+            todo.templatedel(name)
+
+        if cmd == "show":
+            todo.templateshow(argv)
+
+        if cmd == "run":
+            name = argv[0]
+            for ritem in todo.templaterun(name, argv[1:]):
+                printTodoItem(ritem)
+
+        sys.exit(0)
+
+    if cmd == "sql":
+        query = " ".join(argv)
+        for ritem in todo.get_raw(query):
+            printTodoItem(ritem)
 
     item = TodoItem()
     title = []
@@ -439,6 +505,8 @@ if __name__ == "__main__":
 
     if cmd == 'add' or cmd == 'insert':
         item.tags.set(tags)
+        if len(title) == 0:
+            raise ValueError("Empty title")
         item.title.set(' '.join(title))
         todo.add(item)
 
