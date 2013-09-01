@@ -307,7 +307,7 @@ class TodoDatabase:
         c = self._conn.cursor()
         c.execute(query, ids)
  
-    def get_raw(self, querycond):
+    def get_raw(self, querycond, params):
         query = """
         SELECT *
         FROM (
@@ -328,7 +328,7 @@ class TodoDatabase:
         """
         query += querycond
         c = self._conn.cursor()
-        c.execute(query)
+        c.execute(query, params)
         itemlist = []
         while True:
             row = c.fetchone()
@@ -451,7 +451,7 @@ if __name__ == "__main__":
         rowid = title[0]
         title = title[1:]
 
-        itemlist = todo.get_raw("WHERE rowid = %d" % int(rowid,))
+        itemlist = todo.get_raw("WHERE rowid = ?", (int(rowid),))
         if len(itemlist) == 0:
             raise ValueError("No such item: %s" % rowid)
         curitem = itemlist[0]
