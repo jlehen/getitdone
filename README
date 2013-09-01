@@ -1,0 +1,17 @@
+getitdone
+=========
+
+Below are some usage examples.  Note that when arguments are quoted, it's
+because the shell would interpret the special characters otherwise.
+
+$ ./getitdone.py add Update 'periodic.conf(5)' and default/periodic.conf '#FreeBSD'
+$ ./getitdone.py get
+[  1]                    #FreeBSD Update periodic.conf(5) and default/periodic.conf
+$ ./getitdone.py update 1 %90 
+$ ./getitdone.py get
+[  1]      90%           #FreeBSD Update periodic.conf(5) and default/periodic.conf
+$ ./getitdone.py add Write example client code \#push2mob                                                                                                 
+$ ./getitdone.py add Enhance with the newest featres \#push2mob
+$ ./getitdone.py get \#push2mob
+[  2]                    #push2mob Write example client code
+[  3]                    #push2mob Enhance with the newest featres
