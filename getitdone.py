@@ -35,6 +35,7 @@ KNOWN_DATE_FORMATS = (
     '%y-%m-%d', '%Y-%m-%d', '%d-%m-%Y',
     '%y%m%d', '%Y%m%d'
 )
+DB_FILE = "~/.getitdone.sqlite"
 
 def printTodoItem(todoitem):
     rowid = " - "
@@ -433,7 +434,7 @@ class TodoDatabase:
 
 
 if __name__ == "__main__":
-    todo = TodoDatabase('todo.sqlite')
+    todo = TodoDatabase(DB_FILE)
 
     cmd = sys.argv[1]
     argv = sys.argv[2:]
@@ -468,6 +469,7 @@ if __name__ == "__main__":
         query = " ".join(argv)
         for ritem in todo.get_raw(query):
             printTodoItem(ritem)
+        sys.exit(0)
 
     item = TodoItem()
     title = []
