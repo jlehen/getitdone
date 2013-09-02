@@ -439,11 +439,40 @@ class TodoDatabase:
 if __name__ == "__main__":
     todo = TodoDatabase(DB_FILE)
 
+    if len(sys.argv) == 1:
+        sys.argv.append("help")
     cmd = sys.argv[1]
     argv = sys.argv[2:]
     if len(argv) > 0:
         argv = filter(lambda a: len(a) > 0,
           reduce(lambda x, y: x + y, [arg.split() for arg in argv]))
+
+    if cmd == "help":
+        print """
+Usage: %s <command> [args]
+Commands:
+  schema
+  template add <name> <query ...>
+  template del <name>
+  template show <name ...>
+  template run <name> <params ...>
+  sql <query ...>
+  add/insert <property ...>
+  update <id> <property ...>
+  get/print [property ...]
+  del/delete/rem/remove <id>
+Property:
+  %%n    - completion set to n%%; remove with -%% in update
+  !n    - priority set to n; remove with -! in upapte
+  @date - deadline set to date; remove with -@ in update
+  #tag  - add tag; remove with -#tag in update
+  word  - belongs to title
+        """ % sys.argv[0]
+
+    if cmd == "schema":
+        print "You can run a where query against this table:"
+        print TodoDatabase.SQL_JOIN_QUERY
+        sys.exit(0)
 
     if cmd == "template" or cmd == "tmpl":
         cmd = argv[0]
@@ -454,7 +483,7 @@ if __name__ == "__main__":
             req = ' '.join(argv[1:])
             todo.templateadd(name, req)
 
-        if cmd == "del":
+        if cmd == "del" or cmd == "delete":
             name = argv[0]
             todo.templatedel(name)
 
@@ -548,8 +577,7 @@ if __name__ == "__main__":
         for ritem in todo.get(item):
             printTodoItem(ritem)
 
-    if cmd == 'del' or cmd == 'delete' or \
-      cmd == 'rem' or cmd == 'remove':
+    if cmd == 'del' or cmd == 'delete':
         ids = []
         for rowid in title:
             ids.append(int(rowid))
