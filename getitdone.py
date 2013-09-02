@@ -338,7 +338,7 @@ class TodoDatabase:
         for tag in tags:
             c.execute("""
             INSERT INTO tags (todokey, tag) VALUES (?, ?);
-            """, item.rowid.get(), tag)
+            """, (item.rowid.get(), tag))
         if len(untags) > 0:
             subquery = " OR ".join("tags = ?" * len(untags))
             params = [rowid] + map(lambda x: x, untags)
