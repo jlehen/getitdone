@@ -370,7 +370,7 @@ class TodoDatabase:
     def get(self, item):
         columns = []
         if item.title.isModified():
-            columns.append(("title", item.title.get()))
+            columns.append(("title", "*" + item.title.get() + "*"))
         if item.completion.isModified():
             columns.append(("completion", item.completion.get()))
         if item.deadline.isModified():
