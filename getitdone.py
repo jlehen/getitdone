@@ -179,6 +179,85 @@ class TodoItem(object):
 
 class TodoDatabase:
 
+    SQL_TODO_TABLE = """
+    CREATE TABLE IF NOT EXISTS todo (
+        creation INTEGER DEFAULT CURRENT_TIMESTAMP,
+        lastupdate INTEGER DEFAULT CURRENT_TIMESTAMP,
+        updates INTEGER DEFAULT 0,
+        deadline INTEGER,
+        title TEXT NOT NULL ON CONFLICT ABORT,
+        description TEXT,
+        completion INTEGER DEFAULT 0
+            CHECK (completion >= 0 AND completion <= 100),
+        priority INTEGER DEFAULT 0
+    );"""
+
+    SQL_TODO_TABLE_INDEXES = """
+    CREATE INDEX IF NOT EXISTS index_deadline ON todo (deadline);
+
+    CREATE INDEX IF NOT EXISTS index_completion ON todo (completion);
+    """
+
+    SQL_TODO_TABLE_TRIGGERS = """
+    CREATE TRIGGER IF NOT EXISTS trigger_update_todo UPDATE ON todo
+    BEGIN
+        UPDATE todo SET updates = OLD.updates + 1 WHERE rowid = OLD.rowid;
+
+        UPDATE todo
+        SET lastupdate = CURRENT_TIMESTAMP
+        WHERE rowid = OLD.rowid;
+    END;
+    """
+
+    SQL_TAGS_TABLE = """
+    CREATE TABLE IF NOT EXISTS tags (
+        todokey INTEGER REFERENCES todo (rowid) ON DELETE CASCADE,
+        tag TEXT
+    );
+    """
+
+    SQL_TAGS_TABLE_INDEXES = """
+    CREATE INDEX IF NOT EXISTS index_tag_todokey ON tags (tag, todokey);
+
+    CREATE INDEX IF NOT EXISTS index_todokey ON tags (todokey);
+    """
+
+    SQL_TAGS_TABLE_TRIGGERS = """
+    CREATE TRIGGER IF NOT EXISTS trigger_update_tags UPDATE ON tags
+    BEGIN
+        UPDATE todo SET updates = updates + 1 WHERE rowid == OLD.todokey;
+
+        UPDATE todo
+        SET lastupdate = CURRENT_TIMESTAMP
+        WHERE rowid = OLD.rowid;
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS trigger_insert_tags INSERT ON tags
+    BEGIN
+        UPDATE todo SET updates = updates + 1 WHERE rowid == NEW.todokey;
+
+        UPDATE todo
+        SET lastupdate = CURRENT_TIMESTAMP
+        WHERE rowid = NEW.rowid;
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS trigger_delete_tags DELETE ON tags
+    BEGIN
+        UPDATE todo SET updates = updates + 1 WHERE rowid == OLD.todokey;
+
+        UPDATE todo
+        SET lastupdate = CURRENT_TIMESTAMP
+        WHERE rowid = OLD.rowid;
+    END;
+    """
+
+    SQL_TEMPLATES_TABLE = """
+    CREATE TABLE IF NOT EXISTS templates (
+        name TEXT NOT NULL PRIMARY KEY,
+        query TEXT NOT NULL
+    );
+    """
+
     @staticmethod
     def dict_factory(cursor, row):
         d = {}
@@ -190,77 +269,15 @@ class TodoDatabase:
         self._conn = sqlite3.connect(dbfile)
         self._conn.row_factory = TodoDatabase.dict_factory
         self._conn.isolation_level = None
-        self._conn.executescript("""
-        CREATE TABLE IF NOT EXISTS todo (
-            creation INTEGER DEFAULT CURRENT_TIMESTAMP,
-            lastupdate INTEGER DEFAULT CURRENT_TIMESTAMP,
-            updates INTEGER DEFAULT 0,
-            deadline INTEGER,
-            title TEXT NOT NULL ON CONFLICT ABORT,
-            description TEXT,
-            completion INTEGER DEFAULT 0
-                CHECK (completion >= 0 AND completion <= 100),
-            priority INTEGER DEFAULT 0
-        );
-
-        CREATE INDEX IF NOT EXISTS index_deadline ON todo (deadline);
-
-        CREATE INDEX IF NOT EXISTS index_completion ON todo (completion);
-
-
-        CREATE TABLE IF NOT EXISTS tags (
-            todokey INTEGER REFERENCES todo (rowid) ON DELETE CASCADE,
-            tag TEXT
-        );
-
-        CREATE INDEX IF NOT EXISTS index_tag_todokey ON tags (tag, todokey);
-
-        CREATE INDEX IF NOT EXISTS index_todokey ON tags (todokey);
-
-
-        CREATE TABLE IF NOT EXISTS templates (
-            name TEXT NOT NULL PRIMARY KEY,
-            query TEXT NOT NULL
-        );
-
-
-        CREATE TRIGGER IF NOT EXISTS trigger_update_todo UPDATE ON todo
-        BEGIN
-            UPDATE todo SET updates = OLD.updates + 1 WHERE rowid = OLD.rowid;
-
-            UPDATE todo
-            SET lastupdate = CURRENT_TIMESTAMP
-            WHERE rowid = OLD.rowid;
-        END;
-
-        CREATE TRIGGER IF NOT EXISTS trigger_update_tags UPDATE ON tags
-        BEGIN
-            UPDATE todo SET updates = updates + 1 WHERE rowid == OLD.todokey;
-
-            UPDATE todo
-            SET lastupdate = CURRENT_TIMESTAMP
-            WHERE rowid = OLD.rowid;
-        END;
-
-        CREATE TRIGGER IF NOT EXISTS trigger_insert_tags INSERT ON tags
-        BEGIN
-            UPDATE todo SET updates = updates + 1 WHERE rowid == NEW.todokey;
-
-            UPDATE todo
-            SET lastupdate = CURRENT_TIMESTAMP
-            WHERE rowid = NEW.rowid;
-        END;
-
-        CREATE TRIGGER IF NOT EXISTS trigger_delete_tags DELETE ON tags
-        BEGIN
-            UPDATE todo SET updates = updates + 1 WHERE rowid == OLD.todokey;
-
-            UPDATE todo
-            SET lastupdate = CURRENT_TIMESTAMP
-            WHERE rowid = OLD.rowid;
-        END;
-        """)
-
+        self._conn.executescript("%s %s %s %s %s %s %s" % (     \
+            TodoDatabase.SQL_TODO_TABLE,                        \
+            TodoDatabase.SQL_TODO_TABLE_INDEXES,                \
+            TodoDatabase.SQL_TODO_TABLE_TRIGGERS,               \
+            TodoDatabase.SQL_TAGS_TABLE,                        \
+            TodoDatabase.SQL_TAGS_TABLE_INDEXES,                \
+            TodoDatabase.SQL_TAGS_TABLE_TRIGGERS,               \
+            TodoDatabase.SQL_TEMPLATES_TABLE                    \
+        ))
 
     def add(self, item):
         c = self._conn.cursor()
