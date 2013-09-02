@@ -347,24 +347,6 @@ class TodoDatabase:
 
 
     def get(self, item):
-        query = """
-        SELECT *
-        FROM (
-            SELECT
-                todo.rowid,
-                creation,
-                lastupdate,
-                updates,
-                deadline,
-                title,
-                completion,
-                priority,
-                group_concat(tag, ",") AS tags
-            FROM
-                todo LEFT OUTER JOIN tags ON todo.rowid = tags.todokey
-            GROUP BY todo.rowid
-            )
-        """
         columns = []
         if item.title.isModified():
             columns.append(("title", item.title.get()))
