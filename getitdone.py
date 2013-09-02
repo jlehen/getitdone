@@ -24,6 +24,7 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
+import os
 import time
 import sqlite3
 import sys
@@ -35,7 +36,7 @@ KNOWN_DATE_FORMATS = (
     '%y-%m-%d', '%Y-%m-%d', '%d-%m-%Y',
     '%y%m%d', '%Y%m%d'
 )
-DB_FILE = "~/.getitdone.sqlite"
+DB_FILE = os.environ["HOME"] + "/.getitdone.sqlite"
 
 def printTodoItem(todoitem):
     rowid = " - "
