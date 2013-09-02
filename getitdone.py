@@ -47,7 +47,7 @@ def printTodoItem(todoitem):
         completion = "%3d%%" % todoitem.completion.get()
     priority = ""
     if todoitem.priority.get() is not None:
-        priority = "%2d!" % todoitem.priority
+        priority = "%2d!" % todoitem.priority.get()
     deadline = ""
     if todoitem.deadline.get() is not None:
         deadline = time.strftime('@%y/%m/%d',
