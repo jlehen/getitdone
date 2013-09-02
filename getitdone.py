@@ -191,7 +191,8 @@ class TodoDatabase:
         completion INTEGER DEFAULT 0
             CHECK (completion >= 0 AND completion <= 100),
         priority INTEGER DEFAULT 0
-    );"""
+    );
+    """
 
     SQL_TODO_TABLE_INDEXES = """
     CREATE INDEX IF NOT EXISTS index_deadline ON todo (deadline);
@@ -257,6 +258,25 @@ class TodoDatabase:
         name TEXT NOT NULL PRIMARY KEY,
         query TEXT NOT NULL
     );
+    """
+
+    SQL_JOIN_QUERY = """
+    SELECT *
+    FROM (
+        SELECT
+            todo.rowid,
+            todo.creation,
+            todo.lastupdate,
+            todo.updates,
+            todo.deadline,
+            todo.title,
+            todo.completion,
+            todo.priority,
+            group_concat(tags.tag, ",") AS tags
+        FROM
+            todo LEFT OUTER JOIN tags ON todo.rowid = tags.todokey
+        GROUP BY todo.rowid
+        )
     """
 
     @staticmethod
@@ -333,24 +353,7 @@ class TodoDatabase:
         c.execute(query, ids)
  
     def get_raw(self, querycond, params=[]):
-        query = """
-        SELECT *
-        FROM (
-            SELECT
-                todo.rowid,
-                creation,
-                lastupdate,
-                updates,
-                deadline,
-                title,
-                completion,
-                priority,
-                group_concat(tag, ",") AS tags
-            FROM
-                todo LEFT OUTER JOIN tags ON todo.rowid = tags.todokey
-            GROUP BY todo.rowid
-            )
-        """
+        query = TodoDatabase.SQL_JOIN_QUERY
         query += querycond
         query += ";"
         c = self._conn.cursor()
