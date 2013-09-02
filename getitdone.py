@@ -173,7 +173,7 @@ class TodoItem(object):
         if modification.completion.isModified():
             self.completion.set(modification.completion.get())
         if modification.priority.isModified():
-            self.priorityget.set(modification.priority.get())
+            self.priority.set(modification.priority.get())
         if modification.tags.isModified():
             self.tags.set(modifications.tags.get())
 
@@ -324,7 +324,7 @@ class TodoDatabase:
             columns.append(("completion", item.completion.get()))
         if item.deadline.isModified():
             columns.append(("deadline", item.deadline))
-        if item.completion.isModified():
+        if item.priority.isModified():
             columns.append(("priority", item.priority.get()))
         if len(columns) > 0:
             query = "UPDATE todo SET "
