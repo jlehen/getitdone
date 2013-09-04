@@ -25,8 +25,10 @@
 
 
 import os
+import tempfile
 import time
 import sqlite3
+import subprocess
 import sys
 
 # TODO: transaction for tags
@@ -144,6 +146,7 @@ class TodoItem(object):
         self.deadline = TodoItem.RWDProperty()
         self.completion = TodoItem.RWDProperty()
         self.priority = TodoItem.RWDProperty()
+        self.description = TodoItem.RWProperty()
 
         self.tags = TodoItem.RWSet()
 
@@ -155,6 +158,7 @@ class TodoItem(object):
         item.deadline = TodoItem.RWDProperty(row['deadline'])
         item.completion = TodoItem.RWDProperty(row['completion'])
         item.priority = TodoItem.RWDProperty(row['priority'])
+        item.description = TodoItem.RWDProperty(row['description'])
         tags = row['tags'] if row['tags'] is not None else ''
         item.tags = TodoItem.RWSet(tags.split(','))
         return item
@@ -163,7 +167,7 @@ class TodoItem(object):
     def modified(self):
         return self.title.isModified() or self.deadline.isModified() or \
           self.completion.isModified() or self.priority.isModified() or \
-          self.tags.isModified()
+          self.description.isModified() or self.tags.isModified()
 
     def update(self, modification):
         if modification.title.isModified():
@@ -174,6 +178,8 @@ class TodoItem(object):
             self.completion.set(modification.completion.get())
         if modification.priority.isModified():
             self.priority.set(modification.priority.get())
+        if modification.description.isModified():
+            self.description.set(modification.description.get())
         if modification.tags.isModified():
             self.tags.set(modifications.tags.get())
 
@@ -270,6 +276,7 @@ class TodoDatabase:
             todo.updates,
             todo.deadline,
             todo.title,
+            todo.description,
             todo.completion,
             todo.priority,
             group_concat(tags.tag, ",") AS tags
@@ -320,6 +327,8 @@ class TodoDatabase:
         columns = []
         if item.title.isModified():
             columns.append(("title", item.title.get()))
+        if item.description.isModified():
+            columns.append(("description", item.description.get()))
         if item.completion.isModified():
             columns.append(("completion", item.completion.get()))
         if item.deadline.isModified():
@@ -371,12 +380,15 @@ class TodoDatabase:
         columns = []
         if item.title.isModified():
             columns.append(("title", "*" + item.title.get() + "*"))
+        if item.description.isModified():
+            columns.append(("description", "*" + item.description.get() + "*"))
         if item.completion.isModified():
             columns.append(("completion", item.completion.get()))
         if item.deadline.isModified():
             columns.append(("deadline", item.deadline.get()))
         if item.completion.isModified():
             columns.append(("priority", item.priority.get()))
+
 
         querycond = map(lambda t: "%s GLOB ?" % t[0], columns)
         params = map(lambda t: t[1], columns)
@@ -437,6 +449,7 @@ class TodoDatabase:
 
 
 if __name__ == "__main__":
+    os.umask(0077)
     todo = TodoDatabase(DB_FILE)
 
     if len(sys.argv) == 1:
@@ -461,6 +474,7 @@ Commands:
   update <id> <property ...>
   get/print [property ...]
   del/delete/rem/remove <id>
+  edit <id>
 Property:
   %%n    - completion set to n%%; remove with -%% in update
   !n    - priority set to n; remove with -! in upapte
@@ -583,7 +597,32 @@ Property:
             ids.append(int(rowid))
         todo.delete(ids)
 
+    if cmd == 'edit':
+        rowid = title[0]
 
+        itemlist = todo.get_raw("WHERE rowid = ?", (int(rowid),))
+        if len(itemlist) == 0:
+            raise ValueError("No such item: %s" % rowid)
+        curitem = itemlist[0]
+        f, fname = tempfile.mkstemp()
+        f = os.fdopen(f, "w")
+        f.write(curitem.description.get() or "")
+        f.close()
+        editor = os.environ.get("EDITOR") or "/bin/vi"
+        mtime0 = os.stat(fname).st_mtime
+        subprocess.call("%s %s" % (editor, fname), shell=True)
+
+        mtime1 = os.stat(fname).st_mtime
+        if mtime0 == mtime1:
+            print "No changes."
+            os.unlink(fname)
+            sys.exit(0)
+        f = open(fname, 'r')
+        description = f.read()
+        f.close()
+        os.unlink(fname)
+        curitem.description.set(description)
+        todo.update(curitem)
 
 
 ### DEAD CODE ###
