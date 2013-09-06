@@ -556,7 +556,7 @@ Property:
         if len(title) == 0:
             raise ValueError("Empty title")
         item.title.set(' '.join(title))
-        todo.add(item)
+        print todo.add(item)
 
     if cmd == 'update':
         tagsintersect = tags & untags
