@@ -524,15 +524,15 @@ Property:
     for arg in argv:
         if arg[0] == '#':                               # Add tag
             tags.add(arg)
-        elif arg[0:1] == "-#":                          # Remove tag
+        elif arg[0:2] == "-#":                          # Remove tag
             untags.add(arg[1:])
         elif arg[0] == '%':                             # Set completion
             item.completion.set(int(arg[1:]))
-        elif arg[0:1] == '-%':                          # Unset completion
+        elif arg[0:2] == '-%':                          # Unset completion
             item.completion.unset()
         elif arg[0] == '!':                             # Set priority
             item.priority.set(int(arg[1:]))
-        elif arg[0:1] == '-!':                          # Unset priority
+        elif arg[0:2] == '-!':                          # Unset priority
             item.priority.unset()
         elif arg[0] == '@':                             # Set deadline
             ok = False
@@ -546,7 +546,7 @@ Property:
                     pass
                 if not ok:
                     raise ValueError("Unknown date format: %s" % date)
-        elif arg[0:1] == '-@':                          # Set deadline
+        elif arg[0:2] == '-@':                          # Set deadline
             item.deadline.unset()
         else:
             title.append(arg)
