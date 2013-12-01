@@ -460,8 +460,8 @@ Commands:
   template run <name> <params ...>
   sql <query ...>
   add/insert <property ...>
-  update <id> <property ...>
-  get/print [property ...]
+  update/set <id> <property ...>
+  get/print/list [property ...]
   del/delete/rem/remove <id>
   edit <id>
 Property:
@@ -574,7 +574,7 @@ if __name__ == "__main__":
         print todo.add(item)
         sys.exit(0)
 
-    if cmd == 'update':
+    if cmd == 'update' or cmd == 'set':
         tagsintersect = tags & untags
         if len(tagsintersect) != 0:
             raise ValueError("Tags & untags intersect: %s" % \
@@ -599,7 +599,7 @@ if __name__ == "__main__":
         todo.update(curitem)
         sys.exit(0)
         
-    if cmd == 'get' or cmd == 'print':
+    if cmd == 'get' or cmd == 'print' or cmd == 'list':
         if len(title) > 0:
             item.title.set(' '.join(title))
         if len(tags) > 0:
