@@ -218,6 +218,22 @@ class TodoDatabase:
     END;
     """
 
+    SQL_ARCHIVE_TABLE = """
+    CREATE TABLE IF NOT EXISTS archive (
+        creation INTEGER DEFAULT CURRENT_TIMESTAMP,
+        lastupdate INTEGER DEFAULT CURRENT_TIMESTAMP,
+        updates INTEGER DEFAULT 0,
+        deadline INTEGER,
+        title TEXT NOT NULL ON CONFLICT ABORT,
+        description TEXT,
+        completion INTEGER DEFAULT 0
+            CHECK (completion >= 0 AND completion <= 100),
+        priority INTEGER DEFAULT 0,
+        archivetime INTEGER DEFAULT CURRENT_TIMESTAMP,
+        tags TEXT
+    );
+    """
+
     SQL_TAGS_TABLE = """
     CREATE TABLE IF NOT EXISTS tags (
         todokey INTEGER REFERENCES todo (rowid) ON DELETE CASCADE,
@@ -298,10 +314,11 @@ class TodoDatabase:
         self._conn = sqlite3.connect(dbfile)
         self._conn.row_factory = TodoDatabase.dict_factory
         self._conn.isolation_level = None
-        self._conn.executescript("%s %s %s %s %s %s %s" % (     \
+        self._conn.executescript("%s %s %s %s %s %s %s %s" % (  \
             TodoDatabase.SQL_TODO_TABLE,                        \
             TodoDatabase.SQL_TODO_TABLE_INDEXES,                \
             TodoDatabase.SQL_TODO_TABLE_TRIGGERS,               \
+            TodoDatabase.SQL_ARCHIVE_TABLE,                     \
             TodoDatabase.SQL_TAGS_TABLE,                        \
             TodoDatabase.SQL_TAGS_TABLE_INDEXES,                \
             TodoDatabase.SQL_TAGS_TABLE_TRIGGERS,               \
@@ -357,9 +374,20 @@ class TodoDatabase:
             """ % subquery, params)
 
     def delete(self, ids):
-        query = "DELETE FROM todo WHERE rowid IN ({idslist})".format(
-          idslist=', '.join(['?'] * len(ids)))
         c = self._conn.cursor()
+        for rowid in ids:
+            item = self.get_raw("WHERE rowid = ?", (int(rowid),))[0]
+            query = """
+            INSERT INTO archive(creation, lastupdate, updates, deadline, title,
+                                completion, priority, tags)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+            """
+            c.execute(query, (item.creation.get(), item.lastupdate.get(),
+                item.updates.get(), item.deadline.get(), item.title.get(),
+                item.completion.get(), item.priority.get(),
+                ','.join(item.tags.get())))
+        query = "DELETE FROM todo WHERE rowid IN ({idslist})".format(
+            idslist=', '.join(['?'] * len(ids)))
         c.execute(query, ids)
  
     def get_raw(self, querycond, params=[]):
