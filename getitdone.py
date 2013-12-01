@@ -572,6 +572,7 @@ if __name__ == "__main__":
             raise ValueError("Empty title")
         item.title.set(' '.join(title))
         print todo.add(item)
+        sys.exit(0)
 
     if cmd == 'update':
         tagsintersect = tags & untags
@@ -596,6 +597,7 @@ if __name__ == "__main__":
             curitem.tags.delete(untags)
  
         todo.update(curitem)
+        sys.exit(0)
         
     if cmd == 'get' or cmd == 'print':
         if len(title) > 0:
@@ -605,12 +607,14 @@ if __name__ == "__main__":
 
         for ritem in todo.get(item):
             printTodoItem(ritem)
+        sys.exit(0)
 
     if cmd == 'del' or cmd == 'delete':
         ids = []
         for rowid in title:
             ids.append(int(rowid))
         todo.delete(ids)
+        sys.exit(0)
 
     if cmd == 'edit':
         rowid = title[0]
@@ -638,6 +642,10 @@ if __name__ == "__main__":
         os.unlink(fname)
         curitem.description.set(description)
         todo.update(curitem)
+        sys.exit(0)
+
+    print "ERROR: Unknown command: %s" % cmd
+    usage(progname)
 
 
 ### DEAD CODE ###
