@@ -477,7 +477,7 @@ Commands:
   edit <id>
 Property:
   %%n    - completion set to n%%; remove with -%% in update
-  !n    - priority set to n; remove with -! in upapte
+  !n    - priority set to n; remove with -! in update
   @date - deadline set to date; remove with -@ in update
   #tag  - add tag; remove with -#tag in update
   word  - belongs to title
