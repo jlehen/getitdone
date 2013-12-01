@@ -24,6 +24,7 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
+import getopt
 import os
 import tempfile
 import time
@@ -448,21 +449,9 @@ class TodoDatabase:
         return todo.get_raw(query, params)
 
 
-if __name__ == "__main__":
-    os.umask(0077)
-    todo = TodoDatabase(DB_FILE)
-
-    if len(sys.argv) == 1:
-        sys.argv.append("help")
-    cmd = sys.argv[1]
-    argv = sys.argv[2:]
-    if len(argv) > 0:
-        argv = filter(lambda a: len(a) > 0,
-          reduce(lambda x, y: x + y, [arg.split() for arg in argv]))
-
-    if cmd == "help":
-        print """
-Usage: %s <command> [args]
+def usage(progname):
+    print """
+Usage: %s [-d dbfile] <command> [args]
 Commands:
   schema
   template add <name> <query ...>
@@ -481,7 +470,33 @@ Property:
   @date - deadline set to date; remove with -@ in update
   #tag  - add tag; remove with -#tag in update
   word  - belongs to title
-        """ % sys.argv[0]
+""" % progname
+
+if __name__ == "__main__":
+    progname = sys.argv[0]
+    argv = sys.argv[1:]
+    dbfile = DB_FILE
+    optlist, argv = getopt.getopt(argv, 'd:h')
+    for opt, optarg in optlist:
+        if opt == '-d':
+            dbfile = optarg
+        elif opt == '-h':
+            usage(progname)
+            sys.exit(0)
+
+    os.umask(0077)
+    todo = TodoDatabase(dbfile)
+
+    if len(argv) == 0:
+        argv.append("help")
+    cmd = argv[0]
+    argv = argv[1:]
+    if len(argv) > 0:
+        argv = filter(lambda a: len(a) > 0,
+          reduce(lambda x, y: x + y, [arg.split() for arg in argv]))
+
+    if cmd == "help":
+        usage(progname)
 
     if cmd == "schema":
         print "You can run a where query against this table:"
