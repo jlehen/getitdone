@@ -560,7 +560,7 @@ if __name__ == "__main__":
                 except ValueError:
                     pass
                 if not ok:
-                    raise ValueError("Unknown date format: %s" % date)
+                    raise ValueError("Unknown date format: %s" % arg[1:])
         elif arg[0:2] == '-@':                          # Set deadline
             item.deadline.unset()
         else:
