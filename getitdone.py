@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python2
 #
 # Copyright (c) 2013, Jeremie Le Hen <jeremie@le-hen.org>
 # All rights reserved.
